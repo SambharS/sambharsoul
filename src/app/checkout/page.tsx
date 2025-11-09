@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, MapPin, CheckCircle, User } from 'lucide-react';
+import { ArrowLeft, MapPin, CheckCircle, User, Plus, Minus } from 'lucide-react';
 import { formatCurrency, getDistanceKm, calcDeliveryCharge } from '@/lib/delivery-utils';
 import { useAuth } from '@/contexts/auth-context';
 import { RESTAURANT_LOCATION } from '@/config/restaurant';
@@ -93,6 +93,22 @@ export default function CheckoutPage() {
       }
     }
   }, [user, authLoading]);
+
+  const updateCartQuantity = (itemId: string, change: number) => {
+    setCart(prevCart => {
+      const updatedCart = prevCart.map(item => {
+        if (item.id === itemId) {
+          const newQuantity = item.quantity + change;
+          if (newQuantity <= 0) return null;
+          return { ...item, quantity: newQuantity, subtotal: newQuantity * item.price };
+        }
+        return item;
+      }).filter(Boolean) as CartItem[];
+
+      localStorage.setItem('cart', JSON.stringify(updatedCart));
+      return updatedCart;
+    });
+  };
 
   const getTotalFoodAmount = () => cart.reduce((sum, item) => sum + item.subtotal, 0);
 
@@ -180,22 +196,12 @@ export default function CheckoutPage() {
     setLoading(true);
 
     try {
-      // Combine cart items with add-ons
-      const allItems = [
-        ...cart.map(item => ({
-          menuItemId: item.id,
-          quantity: item.quantity,
-          subtotal: item.subtotal
-        })),
-        // Add-ons as special items (you might want to create menu items for these)
-        ...addOns
-          .filter(addon => addon.quantity > 0)
-          .map(addon => ({
-            menuItemId: addon.id,
-            quantity: addon.quantity,
-            subtotal: addon.price * addon.quantity
-          }))
-      ];
+      // Only include actual menu items (not add-ons which don't have valid UUIDs)
+      const allItems = cart.map(item => ({
+        menuItemId: item.id,
+        quantity: item.quantity,
+        subtotal: item.subtotal
+      }));
 
       // Prepare delivery address with coordinates for admin (hidden from user)
       const location = currentLocation || (user && user.locationLat && user.locationLng ? {
@@ -503,16 +509,39 @@ export default function CheckoutPage() {
               <CardContent>
                 <div className="space-y-3">
                   {cart.map((item) => (
-                    <div key={item.id} className="flex items-center justify-between">
+                    <div key={item.id} className="flex items-center justify-between gap-4">
                       <div className="flex-1">
                         <p className="font-medium">{item.name}</p>
                         <p className="text-sm text-muted-foreground">
-                          {formatCurrency(item.price)} × {item.quantity}
+                          {formatCurrency(item.price)} each
                         </p>
                       </div>
-                      <span className="font-medium">
-                        {formatCurrency(item.subtotal)}
-                      </span>
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center space-x-2 bg-muted rounded-lg p-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => updateCartQuantity(item.id, -1)}
+                            className="h-8 w-8 p-0"
+                          >
+                            <Minus className="w-4 h-4" />
+                          </Button>
+                          <span className="w-8 text-center font-bold">
+                            {item.quantity}
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => updateCartQuantity(item.id, 1)}
+                            className="h-8 w-8 p-0"
+                          >
+                            <Plus className="w-4 h-4" />
+                          </Button>
+                        </div>
+                        <span className="font-medium w-20 text-right">
+                          {formatCurrency(item.subtotal)}
+                        </span>
+                      </div>
                     </div>
                   ))}
                 </div>

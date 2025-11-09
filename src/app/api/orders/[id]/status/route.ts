@@ -54,15 +54,19 @@ export async function PATCH(
         const notificationType = notificationMap[status];
         if (notificationType && order.user_id) {
             try {
-                await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/notifications/send`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        type: notificationType,
-                        orderId: id,
-                        userId: order.user_id,
-                    }),
-                });
+                const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL;
+                if (appUrl) {
+                    const notifUrl = appUrl.startsWith('http') ? appUrl : `https://${appUrl}`;
+                    await fetch(`${notifUrl}/api/notifications/send`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            type: notificationType,
+                            orderId: id,
+                            userId: order.user_id,
+                        }),
+                    });
+                }
             } catch (notifError) {
                 console.error('Failed to send notification:', notifError);
                 // Don't fail the status update if notification fails

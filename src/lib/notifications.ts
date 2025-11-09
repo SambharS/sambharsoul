@@ -24,6 +24,11 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
             return { granted: false, error: 'Notifications not supported' };
         }
 
+        // Check if service worker is supported
+        if (!('serviceWorker' in navigator)) {
+            return { granted: false, error: 'Service Worker not supported' };
+        }
+
         // Request permission
         const permission = await Notification.requestPermission();
 
@@ -44,11 +49,28 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
             return { granted: false, error: 'VAPID key missing' };
         }
 
-        const token = await getToken(messaging, { vapidKey });
+        // Wait for service worker to be ready
+        const registration = await navigator.serviceWorker.ready;
+        if (!registration || !registration.active) {
+            return { granted: false, error: 'Service Worker not active' };
+        }
+
+        const token = await getToken(messaging, {
+            vapidKey,
+            serviceWorkerRegistration: registration
+        });
+
+        if (!token) {
+            return { granted: false, error: 'Failed to get FCM token' };
+        }
 
         return { granted: true, token };
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error requesting notification permission:', error);
+        // Check for specific service worker errors
+        if (error.name === 'AbortError' || error.message?.includes('Service Worker')) {
+            return { granted: false, error: 'Service Worker not available' };
+        }
         return { granted: false, error: String(error) };
     }
 }

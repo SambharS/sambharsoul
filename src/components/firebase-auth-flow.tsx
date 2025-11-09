@@ -15,15 +15,13 @@ interface AuthFlowProps {
 }
 
 export default function AuthFlow({ onAuthComplete }: AuthFlowProps) {
-  const [step, setStep] = useState<'phone' | 'otp' | 'name' | 'location'>('phone');
+  const [step, setStep] = useState<'phone' | 'otp' | 'name'>('phone');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [customerName, setCustomerName] = useState('');
-  const [otp, setOtp] = useState(['', '', '', '', '', '', '']);
-  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
-  const [locationLoading, setLocationLoading] = useState(false);
   const [otpTimer, setOtpTimer] = useState(0);
-  const { signInWithPhone, verifyOTP, updateUserLocation, user } = useAuth();
+  const { signInWithPhone, verifyOTP, user } = useAuth();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -33,13 +31,7 @@ export default function AuthFlow({ onAuthComplete }: AuthFlowProps) {
     }
   }, [otpTimer]);
 
-  useEffect(() => {
-    // If user is already authenticated, check if they have location
-    if (user && user.locationLat && user.locationLng) {
-      setLocation({ lat: user.locationLat, lng: user.locationLng });
-      setStep('location');
-    }
-  }, [user]);
+
 
   const sendOtp = async () => {
     if (!phoneNumber || phoneNumber.length !== 10) {
@@ -90,21 +82,73 @@ export default function AuthFlow({ onAuthComplete }: AuthFlowProps) {
 
     try {
       await verifyOTP(enteredOtp);
+
       toast({
         title: 'OTP Verified!',
         description: 'Phone number verified successfully',
       });
-      // Check if user already has a name
-      if (user?.name) {
-        setStep('location');
-      } else {
-        setStep('name');
-      }
+
+      // Check if user exists in database
+      // Wait a bit for user context to update
+      setTimeout(async () => {
+        if (user?.name) {
+          // Existing user with name - go to menu
+          onAuthComplete();
+        } else {
+          // New user or user without name - ask for name
+          setStep('name');
+        }
+      }, 500);
     } catch (error: any) {
       console.error('Error verifying OTP:', error);
       toast({
         title: 'Invalid OTP',
         description: error.message || 'The OTP you entered is incorrect',
+        variant: 'destructive',
+      });
+      setLoading(false);
+    }
+  };
+
+  const saveName = async () => {
+    if (!customerName.trim()) {
+      toast({
+        title: 'Name Required',
+        description: 'Please enter your name to continue',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await fetch('/api/update-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firebaseUid: user?.firebaseUid,
+          name: customerName.trim(),
+          phone: phoneNumber
+        })
+      });
+
+      if (!response.ok) {
+        console.error('Failed to update profile');
+      }
+
+      toast({
+        title: 'Welcome!',
+        description: 'Your account has been set up successfully',
+      });
+
+      // Complete auth and go to menu
+      onAuthComplete();
+    } catch (error) {
+      console.error('Error saving user data:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to save your information',
         variant: 'destructive',
       });
     } finally {
@@ -132,123 +176,13 @@ export default function AuthFlow({ onAuthComplete }: AuthFlowProps) {
     }
   };
 
-  const getLocation = () => {
-    setLocationLoading(true);
-
-    if (!navigator.geolocation) {
-      toast({
-        title: 'Location Not Supported',
-        description: 'Your browser does not support location services',
-        variant: 'destructive',
-      });
-      setLocationLoading(false);
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
-        setLocation({ lat: latitude, lng: longitude });
-
-        try {
-          await updateUserLocation(latitude, longitude);
-
-          toast({
-            title: 'Location Detected!',
-            description: 'Your location has been detected successfully',
-          });
-
-          // Auto-complete after location is set
-          setTimeout(() => {
-            completeAuth();
-          }, 1000);
-        } catch (error) {
-          console.error('Error updating location:', error);
-          toast({
-            title: 'Location Saved Locally',
-            description: 'Location detected but not synced to server',
-            variant: 'destructive',
-          });
-        }
-
-        setLocationLoading(false);
-      },
-      (error) => {
-        // Handle different types of location errors
-        let errorTitle = 'Location Error';
-        let errorDescription = 'Unable to get your location';
-
-        switch (error.code) {
-          case error.PERMISSION_DENIED:
-            errorTitle = 'Location Access Denied';
-            errorDescription = 'Please enable location access in your browser settings to continue. We need this to calculate delivery charges.';
-            break;
-          case error.POSITION_UNAVAILABLE:
-            errorTitle = 'Location Unavailable';
-            errorDescription = 'Your location information is unavailable. Please check your device settings.';
-            break;
-          case error.TIMEOUT:
-            errorTitle = 'Location Timeout';
-            errorDescription = 'Location request timed out. Please try again.';
-            break;
-          default:
-            errorTitle = 'Location Error';
-            errorDescription = 'Unable to get your location. Please try again or enter manually.';
-        }
-
-        // Log error details for debugging (only in development)
-        if (process.env.NODE_ENV === 'development') {
-          console.error('Location error:', {
-            code: error.code,
-            message: error.message,
-            type: error.code === 1 ? 'PERMISSION_DENIED' :
-              error.code === 2 ? 'POSITION_UNAVAILABLE' :
-                error.code === 3 ? 'TIMEOUT' : 'UNKNOWN'
-          });
-        }
-
-        toast({
-          title: errorTitle,
-          description: errorDescription,
-          variant: 'destructive',
-        });
-
-        setLocationLoading(false);
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0
-      }
-    );
-  };
-
-  const completeAuth = () => {
-    if (!location) {
-      toast({
-        title: 'Location Required',
-        description: 'Please provide location access to continue',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    toast({
-      title: 'Welcome!',
-      description: 'You can now browse our menu and place orders',
-    });
-
-    // Call the callback to notify parent component
-    onAuthComplete();
-  };
-
   const resendOtp = () => {
     if (otpTimer > 0) return;
     sendOtp();
   };
 
-  // If user is already authenticated and has location, proceed
-  if (user && user.locationLat && user.locationLng) {
+  // If user is already authenticated, proceed
+  if (user && user.name) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="max-w-md w-full text-center">
@@ -262,7 +196,7 @@ export default function AuthFlow({ onAuthComplete }: AuthFlowProps) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={completeAuth} className="w-full">
+            <Button onClick={onAuthComplete} className="w-full">
               Continue to Menu
               <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
@@ -295,7 +229,7 @@ export default function AuthFlow({ onAuthComplete }: AuthFlowProps) {
                 Enter Your Phone Number
               </CardTitle>
               <CardDescription>
-                We'll send a 6-digit OTP to verify your number
+                Let's get started with your phone number
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -338,7 +272,7 @@ export default function AuthFlow({ onAuthComplete }: AuthFlowProps) {
               <Alert>
                 <Phone className="h-4 w-4" />
                 <AlertDescription>
-                  Enter your 10-digit mobile number to receive OTP
+                  We'll send a 6-digit OTP to verify your number
                 </AlertDescription>
               </Alert>
             </CardContent>
@@ -422,136 +356,27 @@ export default function AuthFlow({ onAuthComplete }: AuthFlowProps) {
               </div>
 
               <Button
-                onClick={async () => {
-                  if (!customerName.trim()) {
-                    toast({
-                      title: 'Name Required',
-                      description: 'Please enter your name to continue',
-                      variant: 'destructive',
-                    });
-                    return;
-                  }
-
-                  // Update user name via API
-                  try {
-                    const response = await fetch('/api/update-profile', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        firebaseUid: user?.firebaseUid,
-                        name: customerName.trim()
-                      })
-                    });
-
-                    if (response.ok) {
-                      setStep('location');
-                    }
-                  } catch (error) {
-                    console.error('Error updating name:', error);
-                    // Continue anyway
-                    setStep('location');
-                  }
-                }}
-                disabled={!customerName.trim()}
+                onClick={saveName}
+                disabled={!customerName.trim() || loading}
                 className="w-full"
               >
-                Continue
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Location Access Step */}
-        {step === 'location' && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <MapPin className="w-5 h-5 mr-2" />
-                Enable Location Access
-              </CardTitle>
-              <CardDescription>
-                We need your location to calculate delivery charges and deliver your order
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {location && (
-                <Alert>
-                  <CheckCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    Location detected: {location.lat.toFixed(6)}, {location.lng.toFixed(6)}
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              <Button
-                onClick={getLocation}
-                disabled={locationLoading}
-                className="w-full"
-              >
-                {locationLoading ? (
+                {loading ? (
                   <>
                     <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                    Getting Location...
-                  </>
-                ) : location ? (
-                  <>
-                    <CheckCircle className="w-4 h-4 mr-2" />
-                    Location Detected
+                    Saving...
                   </>
                 ) : (
                   <>
-                    <MapPin className="w-4 h-4 mr-2" />
-                    Get My Location
+                    Continue to Menu
+                    <ArrowRight className="w-4 h-4 ml-2" />
                   </>
                 )}
               </Button>
-
-              <Button
-                onClick={completeAuth}
-                disabled={!location}
-                className="w-full"
-                size="lg"
-              >
-                Start Ordering
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
-
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-background px-2 text-muted-foreground">
-                    Or
-                  </span>
-                </div>
-              </div>
-
-              <Button
-                onClick={() => {
-                  // Skip location for now - can be added later
-                  toast({
-                    title: 'Location Skipped',
-                    description: 'You can add your location later from settings',
-                  });
-                  onAuthComplete();
-                }}
-                variant="outline"
-                className="w-full"
-              >
-                Skip for Now
-              </Button>
-
-              <Alert>
-                <MapPin className="h-4 w-4" />
-                <AlertDescription>
-                  Location helps us calculate accurate delivery charges. You can add it later from your profile.
-                </AlertDescription>
-              </Alert>
             </CardContent>
           </Card>
         )}
+
+
       </div>
     </div>
   );

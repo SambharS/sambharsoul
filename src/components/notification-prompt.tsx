@@ -64,9 +64,15 @@ export function NotificationPrompt({ userId, role, onEnable, onDismiss }: Notifi
 
                 setIsVisible(false);
                 onEnable?.();
+            } else if (result.error) {
+                console.warn('Notification permission error:', result.error);
+                // Don't show error to user, just hide the prompt
+                setIsVisible(false);
             }
         } catch (error) {
             console.error('Error enabling notifications:', error);
+            // Hide prompt on error
+            setIsVisible(false);
         } finally {
             setIsLoading(false);
         }

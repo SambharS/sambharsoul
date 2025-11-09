@@ -39,6 +39,8 @@ export default function Home() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [shopSettings, setShopSettings] = useState<any>(null);
+  const [showNavbar, setShowNavbar] = useState(true);
+  const [lastScrollY, setLastScrollY] = useState(0);
   const { user, loading: authLoading, signOut } = useAuth();
   const { toast } = useToast();
 
@@ -52,6 +54,29 @@ export default function Home() {
       setLoading(false);
     }
   }, [user]);
+
+  useEffect(() => {
+    // Handle navbar visibility on scroll
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+
+      if (currentScrollY < 10) {
+        // Always show navbar at the top
+        setShowNavbar(true);
+      } else if (currentScrollY > lastScrollY) {
+        // Scrolling down - hide navbar
+        setShowNavbar(false);
+      } else {
+        // Scrolling up - show navbar
+        setShowNavbar(true);
+      }
+
+      setLastScrollY(currentScrollY);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [lastScrollY]);
 
   const fetchShopSettings = async () => {
     try {
@@ -224,7 +249,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
+      {/* Simple Top Header */}
       <header className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
@@ -234,77 +259,27 @@ export default function Home() {
                 alt="Sambhar Soul"
                 className="w-12 h-12 object-contain"
               />
-              <div>
-                <h1 className="text-xl font-bold text-primary">Sambhar Soul</h1>
-                <p className="text-xs text-muted-foreground">Taste the Tradition</p>
-              </div>
+              <h1 className="text-xl font-bold text-primary">Sambhar Soul</h1>
             </div>
 
-            <div className="flex items-center space-x-1 sm:space-x-2">
-              <div className="hidden sm:flex items-center space-x-2 text-sm text-muted-foreground">
-                <span>👋 Hi, {user.name || 'Guest'}!</span>
-              </div>
-              <ThemeToggle />
-              {/* My Orders - Icon only on mobile */}
-              <Button
-                variant="ghost"
-                onClick={() => window.location.href = '/orders'}
-                size="icon"
-                className="sm:w-auto sm:px-4"
-              >
-                <Package className="w-4 h-4" />
-                <span className="hidden sm:inline ml-2">My Orders</span>
-              </Button>
-              {/* Logout - Icon only on mobile */}
-              <Button
-                variant="ghost"
-                onClick={handleLogout}
-                size="icon"
-                className="sm:w-auto sm:px-4"
-              >
-                <LogOut className="w-4 h-4" />
-                <span className="hidden sm:inline ml-2">Logout</span>
-              </Button>
-              {/* Cart - Icon only on mobile */}
-              <Button
-                onClick={proceedToCheckout}
-                className="relative"
-                size="icon"
-                disabled={cart.length === 0}
-              >
-                <ShoppingCart className="w-4 h-4" />
-                <span className="hidden sm:inline ml-2">Cart</span>
-                {getTotalItems() > 0 && (
-                  <Badge className="absolute -top-2 -right-2 h-5 w-5 rounded-full p-0 text-xs">
-                    {getTotalItems()}
-                  </Badge>
-                )}
-              </Button>
+            <div className="hidden sm:flex items-center space-x-2 text-sm text-muted-foreground">
+              <span>👋 Hi, {user.name || 'Guest'}!</span>
             </div>
           </div>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Shop Status Banner */}
-        {shopSettings && (
-          <div className={`mb-6 p-4 rounded-lg ${shopSettings.isOpen
-            ? 'bg-green-50 border border-green-200'
-            : 'bg-red-50 border border-red-200'
-            }`}>
+        {/* Shop Status Banner - Only show when closed */}
+        {shopSettings && !shopSettings.isOpen && (
+          <div className="mb-6 p-4 rounded-lg bg-red-50 border border-red-200">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
-                <div className={`w-3 h-3 rounded-full ${shopSettings.isOpen ? 'bg-green-500' : 'bg-red-500'
-                  }`}></div>
+                <div className="w-3 h-3 rounded-full bg-red-500"></div>
                 <div>
-                  <p className="font-semibold">
-                    {shopSettings.isOpen ? '🟢 Shop is Open' : '🔴 Shop is Closed'}
-                  </p>
+                  <p className="font-semibold">🔴 Shop is Closed</p>
                   <p className="text-sm text-gray-600">
-                    {shopSettings.isOpen
-                      ? `We're accepting orders until ${shopSettings.closeTime}`
-                      : shopSettings.closedMessage
-                    }
+                    {shopSettings.closedMessage}
                   </p>
                 </div>
               </div>
@@ -315,8 +290,8 @@ export default function Home() {
           </div>
         )}
 
-        {/* Custom Message */}
-        {shopSettings?.customMessage && (
+        {/* Custom Message Banner - Optional, can be toggled from admin */}
+        {shopSettings?.customMessage && shopSettings?.showCustomMessage !== false && (
           <div className="mb-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <p className="text-center text-blue-800">
               {shopSettings.customMessage}
@@ -327,7 +302,7 @@ export default function Home() {
         {/* Welcome Section */}
         <div className="text-center mb-8">
           <h2 className="text-3xl font-bold tracking-tight mb-4">
-            Welcome back! 🍽️
+            Welcome back!
           </h2>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
             Ready for some delicious South Indian food? Your location is set for quick delivery!
@@ -398,19 +373,49 @@ export default function Home() {
                     )}
                   </div>
 
-                  {/* Price and Add Button */}
+                  {/* Price and Add/Counter Button */}
                   <div className="flex items-center justify-between pt-2">
                     <span className="text-2xl font-bold text-accent">
                       {formatCurrency(item.price)}
                     </span>
-                    <Button
-                      onClick={() => addToCart(item)}
-                      size="lg"
-                      className="bg-accent hover:bg-accent/90 text-accent-foreground shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
-                    >
-                      <Plus className="w-5 h-5 mr-1" />
-                      Add
-                    </Button>
+                    {(() => {
+                      const cartItem = cart.find(c => c.id === item.id);
+                      if (cartItem) {
+                        return (
+                          <div className="flex items-center space-x-2 bg-accent/10 rounded-lg p-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => updateQuantity(item.id, -1)}
+                              className="h-8 w-8 p-0 hover:bg-accent/20"
+                            >
+                              <Minus className="w-4 h-4" />
+                            </Button>
+                            <span className="w-8 text-center font-bold">
+                              {cartItem.quantity}
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => updateQuantity(item.id, 1)}
+                              className="h-8 w-8 p-0 hover:bg-accent/20"
+                            >
+                              <Plus className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        );
+                      }
+                      return (
+                        <Button
+                          onClick={() => addToCart(item)}
+                          size="lg"
+                          className="bg-accent hover:bg-accent/90 text-accent-foreground shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
+                        >
+                          <Plus className="w-5 h-5 mr-1" />
+                          Add
+                        </Button>
+                      );
+                    })()}
                   </div>
                 </div>
               </Card>
@@ -418,72 +423,48 @@ export default function Home() {
           ))}
         </div>
 
-        {/* Cart Summary */}
-        {cart.length > 0 && (
-          <Card className="sticky bottom-4 shadow-2xl border-2 border-primary/20 bg-card/95 backdrop-blur-sm animate-in slide-in-from-bottom duration-500">
-            <CardHeader className="bg-gradient-to-r from-primary/10 to-accent/10">
-              <CardTitle className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <ShoppingCart className="w-5 h-5 text-primary" />
-                  <span>Order Summary</span>
-                </div>
-                <Badge className="bg-primary text-primary-foreground">{getTotalItems()} items</Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-6">
-              <div className="space-y-3 max-h-48 overflow-y-auto">
-                {cart.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <p className="font-medium">{item.name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {formatCurrency(item.price)} × {item.quantity}
-                      </p>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => updateQuantity(item.id, -1)}
-                      >
-                        <Minus className="w-3 h-3" />
-                      </Button>
-                      <span className="w-8 text-center">{item.quantity}</span>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => updateQuantity(item.id, 1)}
-                      >
-                        <Plus className="w-3 h-3" />
-                      </Button>
-                      <span className="w-20 text-right font-medium">
-                        {formatCurrency(item.subtotal)}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <Separator className="my-4" />
-
-              <div className="flex items-center justify-between">
-                <span className="text-lg font-semibold">Total</span>
-                <span className="text-xl font-bold text-primary">
-                  {formatCurrency(getTotalAmount())}
-                </span>
-              </div>
-
-              <Button
-                onClick={proceedToCheckout}
-                className="w-full mt-4"
-                size="lg"
-              >
-                Proceed to Checkout
-              </Button>
-            </CardContent>
-          </Card>
-        )}
       </main>
+
+      {/* Bottom Navigation Bar */}
+      <nav className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[90%] max-w-md transition-transform duration-300 ${showNavbar ? 'translate-y-0' : 'translate-y-32'
+        }`}>
+        <div className="relative bg-card rounded-2xl shadow-2xl border border-border">
+          <div className="flex items-center justify-around h-16 px-4">
+            {/* Orders Button */}
+            <button
+              onClick={() => window.location.href = '/orders'}
+              className="relative z-10 flex items-center justify-center w-12 h-12 rounded-full transition-all duration-300 hover:bg-muted"
+            >
+              <Package className="w-6 h-6 text-foreground" />
+            </button>
+
+            {/* Cart Button */}
+            <button
+              onClick={proceedToCheckout}
+              disabled={cart.length === 0}
+              className="relative flex items-center justify-center w-14 h-14 rounded-full bg-primary hover:bg-primary/90 transition-all duration-300 disabled:opacity-50"
+            >
+              <ShoppingCart className="w-7 h-7 text-primary-foreground" />
+              {getTotalItems() > 0 && (
+                <Badge className="absolute -top-1 -right-1 h-6 w-6 rounded-full p-0 text-xs font-bold bg-accent text-accent-foreground border-2 border-card flex items-center justify-center">
+                  {getTotalItems()}
+                </Badge>
+              )}
+            </button>
+
+            {/* Logout Button */}
+            <button
+              onClick={handleLogout}
+              className="relative z-10 flex items-center justify-center w-12 h-12 rounded-full transition-all duration-300 hover:bg-muted"
+            >
+              <LogOut className="w-6 h-6 text-foreground" />
+            </button>
+          </div>
+        </div>
+      </nav>
+
+      {/* Spacer to prevent content from being hidden behind bottom nav */}
+      <div className="h-24"></div>
     </div>
   );
 }

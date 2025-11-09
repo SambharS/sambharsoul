@@ -140,14 +140,18 @@ export async function POST(request: NextRequest) {
 
     // Send push notification to admins about new order
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/notifications/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'new_order',
-          orderId: order.id,
-        }),
-      });
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL;
+      if (appUrl) {
+        const notifUrl = appUrl.startsWith('http') ? appUrl : `https://${appUrl}`;
+        await fetch(`${notifUrl}/api/notifications/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'new_order',
+            orderId: order.id,
+          }),
+        });
+      }
     } catch (notifError) {
       console.error('Failed to send notification:', notifError);
       // Don't fail the order creation if notification fails
